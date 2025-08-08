@@ -227,7 +227,7 @@ function Chat({ route }) {
         showUserAvatar={false}
         onSend={(messagesArr) => onSend(messagesArr)}
         imageStyle={{ height: 212, width: 212 }}
-        messagesContainerStyle={{ backgroundColor: '#fff' }}
+        messagesContainerStyle={{ backgroundColor: '#fff', paddingBottom: 80 }}
         textInputStyle={{ backgroundColor: '#fff', borderRadius: 20 }}
         user={{
           _id: auth?.currentUser?.email,
@@ -303,6 +303,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     flex: 1,
     flexDirection: 'row',
+    marginBottom: 50,
     marginHorizontal: 8,
     paddingHorizontal: 8,
     paddingVertical: 6,
@@ -341,6 +342,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     height: 44,
     justifyContent: 'center',
+    marginBottom: 30,
     marginRight: 8,
     width: 44,
   },

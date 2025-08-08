@@ -20,8 +20,24 @@ import backImage from '../assets/background.png';
 export default function Login({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [emailError, setEmailError] = useState('');
+
+  // Email validation function
+  const validateEmail = (emailToValidate) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(emailToValidate);
+  };
 
   const onHandleLogin = () => {
+    // Reset error
+    setEmailError('');
+
+    // Validate email format
+    if (!validateEmail(email)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
     if (email !== '' && password !== '') {
       signInWithEmailAndPassword(auth, email, password)
         .then(() => console.log('Login success'))
@@ -36,15 +52,19 @@ export default function Login({ navigation }) {
       <SafeAreaView style={styles.form}>
         <Text style={styles.title}>Log In</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, emailError ? styles.inputError : null]}
           placeholder="Enter email"
           autoCapitalize="none"
           keyboardType="email-address"
           textContentType="emailAddress"
           autoFocus
           value={email}
-          onChangeText={(text) => setEmail(text)}
+          onChangeText={(text) => {
+            setEmail(text);
+            setEmailError('');
+          }}
         />
+        {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
         <TextInput
           style={styles.input}
           placeholder="Enter password"
@@ -97,6 +117,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     flex: 1,
   },
+  errorText: {
+    color: 'red',
+    fontSize: 12,
+    marginBottom: 10,
+    marginTop: -10,
+  },
   form: {
     // padding: 100,
     flex: 1,
@@ -110,6 +136,10 @@ const styles = StyleSheet.create({
     height: 58,
     marginBottom: 20,
     padding: 12,
+  },
+  inputError: {
+    borderColor: 'red',
+    borderWidth: 1,
   },
   title: {
     alignSelf: 'center',

@@ -49,12 +49,12 @@ const Chats = ({ setUnreadCount }) => {
       return () => subscription.remove();
     }
     // Always return a cleanup function for non-android platforms
-    return () => { };
+    return () => {};
   }, [selectedItems.length]);
 
   useFocusEffect(
     useCallback(() => {
-      let unsubscribe = () => { };
+      let unsubscribe = () => {};
       const loadNewMessages = async () => {
         try {
           const storedMessages = await AsyncStorage.getItem('newMessages');
@@ -84,16 +84,11 @@ const Chats = ({ setUnreadCount }) => {
             const { messages } = change.doc.data();
             if (Array.isArray(messages) && messages.length > 0) {
               const firstMessage = messages[0];
-              if (
-                firstMessage.user &&
-                firstMessage.user._id !== auth?.currentUser?.email
-              ) {
+              if (firstMessage.user && firstMessage.user._id !== auth?.currentUser?.email) {
                 setNewMessages((prev) => {
                   const updated = { ...prev, [chatId]: (prev[chatId] || 0) + 1 };
                   AsyncStorage.setItem('newMessages', JSON.stringify(updated));
-                  setUnreadCount(
-                    Object.values(updated).reduce((total, num) => total + num, 0)
-                  );
+                  setUnreadCount(Object.values(updated).reduce((total, num) => total + num, 0));
                   return updated;
                 });
               }
@@ -142,9 +137,7 @@ const Chats = ({ setUnreadCount }) => {
 
   const selectItems = (chat) => {
     setSelectedItems((prev) =>
-      prev.includes(chat.id)
-        ? prev.filter((id) => id !== chat.id)
-        : [...prev, chat.id]
+      prev.includes(chat.id) ? prev.filter((id) => id !== chat.id) : [...prev, chat.id]
     );
   };
 
@@ -173,7 +166,11 @@ const Chats = ({ setUnreadCount }) => {
                     ? { ...user, deletedFromChat: true }
                     : user
                 );
-              return setDoc(doc(database, 'chats', chatId), { users: updatedUsers }, { merge: true }).then(() => {
+              return setDoc(
+                doc(database, 'chats', chatId),
+                { users: updatedUsers },
+                { merge: true }
+              ).then(() => {
                 const deletedCount = updatedUsers.filter((u) => u.deletedFromChat).length;
                 if (deletedCount === updatedUsers.length) {
                   return deleteDoc(doc(database, 'chats', chatId));
@@ -197,10 +194,10 @@ const Chats = ({ setUnreadCount }) => {
       headerRight:
         selectedItems.length > 0
           ? () => (
-            <TouchableOpacity style={styles.trashBin} onPress={handleDeleteChat}>
-              <Ionicons name="trash" size={24} color={colors.teal} />
-            </TouchableOpacity>
-          )
+              <TouchableOpacity style={styles.trashBin} onPress={handleDeleteChat}>
+                <Ionicons name="trash" size={24} color={colors.teal} />
+              </TouchableOpacity>
+            )
           : undefined,
       headerLeft:
         selectedItems.length > 0

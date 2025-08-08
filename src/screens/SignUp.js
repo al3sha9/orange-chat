@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types';
 import React, { useState } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { updateProfile, createUserWithEmailAndPassword } from 'firebase/auth';
 import {
   Text,
@@ -22,8 +22,77 @@ export default function SignUp({ navigation }) {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
-  const onHandleSignup = () => {
+  // Email validation function
+  const validateEmail = (emailToValidate) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(emailToValidate);
+  };
+
+  // Password validation function
+  const validatePassword = (passwordToValidate) => {
+    const hasLength = passwordToValidate.length >= 8;
+    const hasCapital = /[A-Z]/.test(passwordToValidate);
+    const hasNumber = /\d/.test(passwordToValidate);
+
+    return {
+      isValid: hasLength && hasCapital && hasNumber,
+      errors: {
+        length: !hasLength,
+        capital: !hasCapital,
+        number: !hasNumber,
+      },
+    };
+  };
+
+  // Check if email already exists
+  const checkEmailExists = async (emailToCheck) => {
+    try {
+      const userDoc = await getDoc(doc(database, 'users', emailToCheck));
+      return userDoc.exists();
+    } catch (error) {
+      console.error('Error checking email:', error);
+      return false;
+    }
+  };
+
+  const onHandleSignup = async () => {
+    // Reset errors
+    setEmailError('');
+    setPasswordError('');
+
+    // Validate email format
+    if (!validateEmail(email)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
+    // Check if email already exists
+    const emailExists = await checkEmailExists(email);
+    if (emailExists) {
+      setEmailError('This email is already registered');
+      return;
+    }
+
+    // Validate password
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      let errorMessage = 'Password must contain:';
+      if (passwordValidation.errors.length) errorMessage += ' at least 8 characters,';
+      if (passwordValidation.errors.capital) errorMessage += ' one capital letter,';
+      if (passwordValidation.errors.number) errorMessage += ' one number';
+      setPasswordError(errorMessage);
+      return;
+    }
+
+    // Validate username
+    if (username.trim() === '') {
+      Alert.alert('Error', 'Please enter a username');
+      return;
+    }
+
     if (email !== '' && password !== '') {
       createUserWithEmailAndPassword(auth, email, password)
         .then((cred) => {
@@ -58,25 +127,32 @@ export default function SignUp({ navigation }) {
           onChangeText={(text) => setUsername(text)}
         />
         <TextInput
-          style={styles.input}
+          style={[styles.input, emailError ? styles.inputError : null]}
           placeholder="Enter email"
           autoCapitalize="none"
           keyboardType="email-address"
           textContentType="emailAddress"
-          autoFocus
           value={email}
-          onChangeText={(text) => setEmail(text)}
+          onChangeText={(text) => {
+            setEmail(text);
+            setEmailError('');
+          }}
         />
+        {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
         <TextInput
-          style={styles.input}
+          style={[styles.input, passwordError ? styles.inputError : null]}
           placeholder="Enter password"
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry
           textContentType="password"
           value={password}
-          onChangeText={(text) => setPassword(text)}
+          onChangeText={(text) => {
+            setPassword(text);
+            setPasswordError('');
+          }}
         />
+        {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
         <TouchableOpacity style={styles.button} onPress={onHandleSignup}>
           <Text style={{ fontWeight: 'bold', color: '#fff', fontSize: 18 }}> Sign Up</Text>
         </TouchableOpacity>
@@ -115,6 +191,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     flex: 1,
   },
+  errorText: {
+    color: 'red',
+    fontSize: 12,
+    marginBottom: 10,
+    marginTop: -10,
+  },
   form: {
     flex: 1,
     justifyContent: 'center',
@@ -127,6 +209,10 @@ const styles = StyleSheet.create({
     height: 58,
     marginBottom: 20,
     padding: 12,
+  },
+  inputError: {
+    borderColor: 'red',
+    borderWidth: 1,
   },
   title: {
     alignSelf: 'center',
