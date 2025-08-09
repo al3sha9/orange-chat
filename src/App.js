@@ -18,6 +18,7 @@ import Group from './screens/Group';
 import SignUp from './screens/SignUp';
 import Profile from './screens/Profile';
 import Account from './screens/Account';
+import Language from './screens/Language';
 import { auth } from './config/firebase';
 import Settings from './screens/Settings';
 import ChatInfo from './screens/ChatInfo';
@@ -78,6 +79,7 @@ const MainStack = () => (
     <Stack.Screen name="About" component={About} />
     <Stack.Screen name="Help" component={Help} />
     <Stack.Screen name="Account" component={Account} />
+    <Stack.Screen name="Language" component={Language} options={{ title: 'Language Settings' }} />
     <Stack.Screen name="Group" component={Group} options={{ title: 'New Group' }} />
     <Stack.Screen name="ChatInfo" component={ChatInfo} options={{ title: 'Chat Information' }} />
   </Stack.Navigator>

@@ -36,6 +36,16 @@ const Settings = ({ navigation }) => {
       />
 
       <Cell
+        title="Language"
+        subtitle="Choose your preferred language"
+        icon="language-outline"
+        iconColor="black"
+        onPress={() => {
+          navigation.navigate('Language');
+        }}
+      />
+
+      <Cell
         title="Help"
         subtitle="Contact us, app info"
         icon="help-circle-outline"
