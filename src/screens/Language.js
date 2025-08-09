@@ -50,7 +50,7 @@ const Language = ({ navigation }) => {
     try {
       await AsyncStorage.setItem('selectedLanguage', languageCode);
       setSelectedLanguage(languageCode);
-      
+
       const selectedLang = LANGUAGES.find(lang => lang.code === languageCode);
       Alert.alert(
         'Language Changed',
@@ -94,7 +94,7 @@ const Language = ({ navigation }) => {
         <Text style={styles.subtitle}>
           Select your preferred language for the app interface
         </Text>
-        
+
         <View style={styles.languageList}>
           {LANGUAGES.map(renderLanguageOption)}
         </View>

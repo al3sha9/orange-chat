@@ -3,12 +3,14 @@ import uuid from 'react-native-uuid';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import EmojiModal from 'react-native-emoji-modal';
-import React, { useState, useEffect, useCallback } from 'react';
+import { Audio } from 'expo-av';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { Send, Bubble, GiftedChat, InputToolbar } from 'react-native-gifted-chat';
 import { ref, getStorage, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import {
   View,
+  Text,
   Keyboard,
   StyleSheet,
   BackHandler,
@@ -38,13 +40,103 @@ const RenderBubble = (props) => (
       right: { backgroundColor: colors.primary },
       left: { backgroundColor: 'lightgrey' },
     }}
+    renderMessageVideo={() => null}
+    renderMessageAudio={(messageProps) => {
+      if (messageProps.currentMessage.audio) {
+        return <AudioMessage audioUrl={messageProps.currentMessage.audio} />;
+      }
+      return null;
+    }}
   />
 );
 
-const RenderAttach = (props) => (
-  <TouchableOpacity {...props} style={styles.addImageIcon}>
+const AudioMessage = ({ audioUrl }) => {
+  const [sound, setSound] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [position, setPosition] = useState(0);
+
+  useEffect(() => {
+    return sound
+      ? () => {
+          sound.unloadAsync();
+        }
+      : undefined;
+  }, [sound]);
+
+  const playPauseAudio = async () => {
+    try {
+      if (sound) {
+        if (isPlaying) {
+          await sound.pauseAsync();
+          setIsPlaying(false);
+        } else {
+          await sound.playAsync();
+          setIsPlaying(true);
+        }
+      } else {
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          { uri: audioUrl },
+          { shouldPlay: true },
+          (status) => {
+            if (status.isLoaded) {
+              setDuration(status.durationMillis || 0);
+              setPosition(status.positionMillis || 0);
+              if (status.didJustFinish) {
+                setIsPlaying(false);
+                setPosition(0);
+              }
+            }
+          }
+        );
+        setSound(newSound);
+        setIsPlaying(true);
+      }
+    } catch (error) {
+      console.error('Error playing audio:', error);
+    }
+  };
+
+  const formatTime = (millis) => {
+    const minutes = Math.floor(millis / 60000);
+    const seconds = Math.floor((millis % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <View style={styles.audioMessageContainer}>
+      <TouchableOpacity onPress={playPauseAudio} style={styles.playButton}>
+        <Ionicons
+          name={isPlaying ? 'pause' : 'play'}
+          size={24}
+          color={colors.primary}
+        />
+      </TouchableOpacity>
+      <View style={styles.audioProgress}>
+        <View style={styles.progressBar}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: duration > 0 ? `${(position / duration) * 100}%` : '0%' },
+            ]}
+          />
+        </View>
+        <Text style={styles.audioDuration}>
+          {formatTime(isPlaying ? position : duration)}
+        </Text>
+      </View>
+    </View>
+  );
+};
+
+const RenderAttach = (props, showMenu, onPress) => (
+  <TouchableOpacity {...props} style={styles.addImageIcon} onPress={onPress}>
     <View>
-      <Ionicons name="attach-outline" size={32} color={colors.teal} />
+      <Ionicons
+        name={showMenu ? "close" : "attach-outline"}
+        size={32}
+        color={colors.teal}
+      />
     </View>
   </TouchableOpacity>
 );
@@ -79,10 +171,50 @@ const RenderActions = (handleEmojiPanel) => (
   </TouchableOpacity>
 );
 
+const RenderAttachmentMenu = ({ visible, onClose, onImagePress, onAudioPress }) => {
+  if (!visible) return null;
+
+  return (
+    <View style={styles.attachmentMenu}>
+      <TouchableOpacity style={styles.attachmentOption} onPress={onImagePress}>
+        <View style={styles.attachmentIconContainer}>
+          <Ionicons name="image" size={24} color={colors.primary} />
+        </View>
+        <Text style={styles.attachmentOptionText}>Photo</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.attachmentOption} onPress={onAudioPress}>
+        <View style={styles.attachmentIconContainer}>
+          <Ionicons name="mic" size={24} color={colors.primary} />
+        </View>
+        <Text style={styles.attachmentOptionText}>Audio</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const RenderRecordingIndicator = ({ isRecording, onStop }) => {
+  if (!isRecording) return null;
+
+  return (
+    <View style={styles.recordingContainer}>
+      <View style={styles.recordingIndicator}>
+        <View style={styles.pulseDot} />
+        <Text style={styles.recordingText}>Recording...</Text>
+      </View>
+      <TouchableOpacity style={styles.stopButton} onPress={onStop}>
+        <Ionicons name="stop" size={24} color="white" />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
 function Chat({ route }) {
   const [messages, setMessages] = useState([]);
   const [modal, setModal] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [recording, setRecording] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(database, 'chats', route.params.id), (document) => {
@@ -205,6 +337,93 @@ function Chat({ route }) {
     );
   };
 
+  const startRecording = async () => {
+    try {
+      console.log('Requesting permissions..');
+      await Audio.requestPermissionsAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      console.log('Starting recording..');
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(newRecording);
+      setIsRecording(true);
+      console.log('Recording started');
+    } catch (err) {
+      console.error('Failed to start recording', err);
+    }
+  };
+
+  const stopRecording = async () => {
+    console.log('Stopping recording..');
+    setIsRecording(false);
+    if (!recording) return;
+
+    await recording.stopAndUnloadAsync();
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+    });
+    const uri = recording.getURI();
+    setRecording(null);
+    console.log('Recording stopped and stored at', uri);
+
+    if (uri) {
+      await uploadAudioAsync(uri);
+    }
+  };
+
+  const uploadAudioAsync = async (uri) => {
+    setUploading(true);
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
+      const randomString = uuid.v4();
+      const fileRef = ref(getStorage(), `audio/${randomString}.m4a`);
+      const uploadTask = uploadBytesResumable(fileRef, blob);
+
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log(`Audio upload is ${progress}% done`);
+        },
+        (error) => {
+          console.log('Audio upload error:', error);
+          setUploading(false);
+        },
+        async () => {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          setUploading(false);
+          onSend([
+            {
+              _id: randomString,
+              createdAt: new Date(),
+              text: '',
+              audio: downloadUrl,
+              user: {
+                _id: auth?.currentUser?.email,
+                name: auth?.currentUser?.displayName,
+                avatar: 'https://i.pravatar.cc/300',
+              },
+            },
+          ]);
+        }
+      );
+    } catch (error) {
+      console.error('Error uploading audio:', error);
+      setUploading(false);
+    }
+  };
+
+  const handleAttachPress = () => {
+    setShowAttachMenu(!showAttachMenu);
+  };
+
   const handleEmojiPanel = useCallback(() => {
     setModal((prevModal) => {
       if (prevModal) {
@@ -221,13 +440,14 @@ function Chat({ route }) {
   return (
     <>
       {uploading && RenderLoadingUpload()}
+      <RenderRecordingIndicator isRecording={isRecording} onStop={stopRecording} />
       <GiftedChat
         messages={messages}
         showAvatarForEveryMessage={false}
         showUserAvatar={false}
         onSend={(messagesArr) => onSend(messagesArr)}
         imageStyle={{ height: 212, width: 212 }}
-        messagesContainerStyle={{ backgroundColor: '#fff', paddingBottom: 80 }}
+        messagesContainerStyle={{ backgroundColor: '#fff', paddingBottom: showAttachMenu ? 140 : 80 }}
         textInputStyle={{ backgroundColor: '#fff', borderRadius: 20 }}
         user={{
           _id: auth?.currentUser?.email,
@@ -235,7 +455,7 @@ function Chat({ route }) {
           avatar: 'https://i.pravatar.cc/300',
         }}
         renderBubble={(props) => RenderBubble(props)}
-        renderSend={(props) => RenderAttach({ ...props, onPress: pickImage })}
+        renderSend={(props) => RenderAttach(props, showAttachMenu, handleAttachPress)}
         renderUsernameOnMessage
         renderAvatarOnTop
         renderInputToolbar={(props) => RenderInputToolbar(props, handleEmojiPanel)}
@@ -244,6 +464,19 @@ function Chat({ route }) {
         onPressActionButton={handleEmojiPanel}
         scrollToBottomStyle={styles.scrollToBottomStyle}
         renderLoading={RenderLoading}
+      />
+
+      <RenderAttachmentMenu
+        visible={showAttachMenu}
+        onClose={() => setShowAttachMenu(false)}
+        onImagePress={() => {
+          setShowAttachMenu(false);
+          pickImage();
+        }}
+        onAudioPress={() => {
+          setShowAttachMenu(false);
+          startRecording();
+        }}
       />
 
       {modal && (
@@ -345,6 +578,113 @@ const styles = StyleSheet.create({
     marginBottom: 30,
     marginRight: 8,
     width: 44,
+  },
+  attachmentMenu: {
+    position: 'absolute',
+    bottom: 80,
+    left: 20,
+    right: 20,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  attachmentOption: {
+    alignItems: 'center',
+    padding: 16,
+  },
+  attachmentIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#f0f0f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  attachmentOptionText: {
+    fontSize: 12,
+    color: colors.grey,
+    fontWeight: '500',
+  },
+  recordingContainer: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    right: 20,
+    backgroundColor: colors.primary,
+    borderRadius: 25,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 1000,
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'white',
+    marginRight: 8,
+  },
+  recordingText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  stopButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  audioMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    minWidth: 200,
+  },
+  playButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  audioProgress: {
+    flex: 1,
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 2,
+    marginBottom: 4,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+  },
+  audioDuration: {
+    fontSize: 12,
+    color: colors.grey,
   },
 });
 
